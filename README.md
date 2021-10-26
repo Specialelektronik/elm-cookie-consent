@@ -34,6 +34,6 @@ port onCookieConsentChange : (Value -> msg) -> Sub msg
 
 # Release
 
-1. Update documentation: ` elm make --docs=docs.json`
-2. Create the next tag according to semver in main branch. The tag should look something like this: "1.2.3", NOT "v1.2.3"
+1. Update documentation: `elm make --docs=docs.json`
+2. Create the next tag according to semver in main branch. `git tag -a 1.2.3 -m "Short description of changes in the new version"` The tag should look something like this: "1.2.3", NOT "v1.2.3"
 3. Push it real good!
