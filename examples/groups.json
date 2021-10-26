@@ -1,0 +1,45 @@
+[
+    {
+        "GroupName": "Absolut nödvändiga cookies",
+        "Hosts": [
+            {
+                "DisplayName": "sibforms.com",
+                "HostId": "H4"
+            }
+        ],
+        "CustomGroupId": "C0001"
+    },
+    {
+        "GroupName": "Prestanda-cookies",
+        "Hosts": [],
+        "CustomGroupId": "C0002"
+    },
+    {
+        "GroupName": "Funktionella cookies",
+        "Hosts": [],
+        "CustomGroupId": "C0003"
+    },
+    {
+        "GroupName": "Riktade cookies",
+        "Hosts": [
+            {
+                "DisplayName": "vimeo.com",
+                "HostId": "H1"
+            },
+            {
+                "DisplayName": "doubleclick.net",
+                "HostId": "H2"
+            },
+            {
+                "DisplayName": "youtube.com",
+                "HostId": "H3"
+            }
+        ],
+        "CustomGroupId": "C0004"
+    },
+    {
+        "GroupName": "Sociala medier-cookies",
+        "Hosts": [],
+        "CustomGroupId": "C0005"
+    }
+]
