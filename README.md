@@ -85,7 +85,14 @@ elm make --docs=docs.json
 
 ## Release
 
-Version 2.0.0 is a breaking API change. Commit the library changes, tag `2.0.0`
-(no `v` prefix), and push the commit and tag before deploying a consumer pinned
-to that version. A sibling checkout can be used as a temporary local source
-for verification; production `elm-git.json` must reference the released tag.
+Version 2.0.0 is a breaking API change.
+
+1. Update documentation: `elm make --docs=docs.json`.
+2. Merge the library changes into the release branch.
+3. Create an annotated tag without a `v` prefix:
+   `git tag -a 2.0.0 -m "Provider-independent cookie consent"`.
+4. Push the tag: `git push origin 2.0.0`.
+5. Publish the GitHub release before deploying consumers pinned to `2.0.0`.
+
+A sibling checkout can be used as a temporary local source for verification.
+Production `elm-git.json` must reference the released tag.
