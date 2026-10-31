@@ -1,27 +1,24 @@
 module Cookie exposing
-    ( Host, hasGivenConsent, defaultHosts
-    , ConsentError(..)
+    ( Category(..), Consent, empty, fromCategories, hasGivenConsent
+    , ConsentError(..), checkHost
     , decoder
     )
 
-{-| A helper package to deal with cookie consent changes when using CookiePro.
+{-| Provider-independent cookie consent. Applications send a complete snapshot
+of accepted category aliases through a port whenever consent changes.
 
 
-# Host and consent
+# Consent
 
-CookiePro provides data on the groups of cookies (Marketing cookies, Performance cookies etc) discovered on your website through `window.Optanon?.GetDomainData?.().Groups` and `OptanonActiveGroups` property. These has to be fed into this module via a port (see **README.md**).
-
-@docs Host, hasGivenConsent, defaultHosts
+@docs Category, Consent, empty, fromCategories, hasGivenConsent
 
 
-# Errors
+# Configurable host rules
 
-@docs ConsentError
+@docs ConsentError, checkHost
 
 
-# Decoder
-
-Data from CookiePro has to imported via a port and needs to be decoded using this decoder
+# JSON
 
 @docs decoder
 
@@ -30,117 +27,104 @@ Data from CookiePro has to imported via a port and needs to be decoded using thi
 import Json.Decode as Decode exposing (Decoder)
 
 
-{-| Internal type that holds data about which hosts (domains) that the user has accepted cookies from.
+{-| Categories supported by the consent model. `Unclassified` corresponds to the
+JSON alias `undefined`; it does not grant permission for any other category.
 -}
-type Host
-    = Host Internals
+type Category
+    = Necessary
+    | Functional
+    | Statistical
+    | Marketing
+    | Unclassified
 
 
-type alias Internals =
-    { id : String
-    , name : String
-    , groupName : String
-    , isActive : Bool
-    }
-
-
-{-| Intermidiate type to help decoding the object from CookiePro.
+{-| A complete snapshot of explicitly accepted categories.
 -}
-type alias Group =
-    { name : String
-    , id : String
-    , hosts :
-        List
-            { id : String
-            , name : String
-            }
-    }
+type Consent
+    = Consent (List Category)
 
 
-{-| A domain could be prohibited from being embedded for two reasons, either the user has not censented to the type of cookies that the host uses, or we have no information about a host. Since cookies are opt-in by law, we have to disable any unknown hosts since we cannot garantee that the host won't place any cookies not allowed by the user.
+{-| No category is accepted before the consent provider initializes.
+-}
+empty : Consent
+empty =
+    Consent []
+
+
+{-| Build a snapshot from accepted categories, for other providers or tests.
+-}
+fromCategories : List Category -> Consent
+fromCategories =
+    Consent
+
+
+{-| Check whether a category has explicitly been accepted.
+-}
+hasGivenConsent : Category -> Consent -> Bool
+hasGivenConsent category (Consent categories) =
+    List.member category categories
+
+
+{-| A known host requires a category that has not been accepted, or the
+application has not configured a rule for this host.
 -}
 type ConsentError
-    = NoConsent String
+    = NoConsent Category
     | UnknownHost
 
 
-{-| An empty list serves as the list of hosts before the data has been initialized through the port.
+{-| Check a host against application-owned rules. Matching is exact: subdomains
+need their own rules. Unknown hosts are always denied. The first matching rule
+wins, so configure a single rule per host.
+
+    checkHost [ ( "youtube.com", Marketing ) ] "youtube.com" empty
+        --> Err (NoConsent Marketing)
+
 -}
-defaultHosts : List Host
-defaultHosts =
-    []
+checkHost : List ( String, Category ) -> String -> Consent -> Result ConsentError ()
+checkHost rules host consent =
+    case List.filter (\( name, _ ) -> name == host) rules |> List.head of
+        Just ( _, category ) ->
+            if hasGivenConsent category consent then
+                Ok ()
+
+            else
+                Err (NoConsent category)
+
+        Nothing ->
+            Err UnknownHost
 
 
-{-| Determine of the host's cookies have been accepted
+{-| Decode a complete JSON array of accepted category aliases:
+`necessary`, `functional`, `statistical`, `marketing`, `undefined`.
+CookieTractor's documented `consent.current` and `CookieConsent` event's
+`detail.current` use this shape. Unknown string aliases are ignored and never
+grant a known category. Other JSON shapes fail decoding. Replace the previous
+snapshot with the result; do not merge it, so withdrawals take effect.
 -}
-hasGivenConsent : String -> List Host -> Result ConsentError ()
-hasGivenConsent hostName hosts =
-    hosts
-        |> List.filter (\(Host { name }) -> name == hostName)
-        |> List.head
-        |> Maybe.map hostIsActive
-        |> Maybe.withDefault (Err UnknownHost)
-
-
-hostIsActive : Host -> Result ConsentError ()
-hostIsActive (Host internals) =
-    if internals.isActive then
-        Ok ()
-
-    else
-        Err (NoConsent internals.groupName)
-
-
-toHosts : List Group -> List String -> List Host
-toHosts allGroups activeGroupIds =
-    List.concatMap (groupToHosts activeGroupIds) allGroups
-
-
-groupToHosts : List String -> Group -> List Host
-groupToHosts activeGroupIds group =
-    List.map (groupToHost group.name (List.member group.id activeGroupIds)) group.hosts
-
-
-groupToHost : String -> Bool -> { id : String, name : String } -> Host
-groupToHost groupName isActive { id, name } =
-    Host
-        { id = id
-        , name = name
-        , groupName = groupName
-        , isActive = isActive
-        }
-
-
-{-| Decodes 2 keys into the list of hosts, `allGroups` must include the data from `window.Optanon?.GetDomainData?.().Groups` and `activeGroupIdsString` must include the data from `OptanonActiveGroups`.
--}
-decoder : Decoder (List Host)
+decoder : Decoder Consent
 decoder =
-    Decode.map2 toHosts
-        (Decode.field "allGroups" (Decode.list groupDecoder))
-        (Decode.field "activeGroupIdsString" activeGroupsDecoder)
+    Decode.list Decode.string
+        |> Decode.map (List.filterMap categoryFromAlias >> fromCategories)
 
 
-activeGroupsDecoder : Decoder (List String)
-activeGroupsDecoder =
-    Decode.string
-        |> Decode.map
-            (\str ->
-                str
-                    |> String.split ","
-                    |> List.filter (String.isEmpty >> not)
-            )
+categoryFromAlias : String -> Maybe Category
+categoryFromAlias alias =
+    case alias of
+        "necessary" ->
+            Just Necessary
 
+        "functional" ->
+            Just Functional
 
-groupDecoder : Decoder Group
-groupDecoder =
-    Decode.map3 Group
-        (Decode.field "GroupName" Decode.string)
-        (Decode.field "CustomGroupId" Decode.string)
-        (Decode.field "Hosts" (Decode.list groupHostDecoder))
+        "statistical" ->
+            Just Statistical
 
+        "marketing" ->
+            Just Marketing
 
-groupHostDecoder : Decoder { id : String, name : String }
-groupHostDecoder =
-    Decode.map2 (\id name -> { id = id, name = name })
-        (Decode.field "HostId" Decode.string)
-        (Decode.field "DisplayName" Decode.string)
+        "undefined" ->
+            Just Unclassified
+
+        _ ->
+            Nothing
